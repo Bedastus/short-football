@@ -145,20 +145,51 @@ One triple because one SokaBet draw settles all three accounts.
 All three carry **Spurs YES**, and all three lose together whenever that leg fails. At most
 one can win per round — they are mutually exclusive by construction.
 
-## Browser profiles
+## The three accounts
 
-`open_books.py` gives each account its own Chromium profile directory, so each window keeps a
-separate session cookie:
+Nothing connects the bot to SokaBet. It prints three stakes; you place three tickets. What
+ties an account to a ticket is **window order**, fixed by the launcher:
 
-```bash
-python3 open_books.py --accounts 3 --screen 1920x1080
-python3 open_books.py --dry-run                      # print commands, launch nothing
-python3 open_books.py --browser "/path/to/chrome"    # if auto-detect misses
+| window | profile | account | slip | legs |
+|---|---|---|---|---|
+| leftmost | `soka-1` | account 1 | A | Y Y Y |
+| middle | `soka-2` | account 2 | B | N Y Y |
+| rightmost | `soka-3` | account 3 | C | Y Y N |
+
+That mapping is also what the bot prints each round, so the two always agree:
+
+```
+    soka-1  slip A  Y Y Y  @ 5.255  stake 200
+    soka-2  slip B  N Y Y  @ 6.748  stake 200
+    soka-3  slip C  Y Y N  @ 6.748  stake 200
 ```
 
-Profiles live in `profiles/` (gitignored) and persist, so you sign in once. Windows tile left
-to right in account order — window 1 is `soka-1`, which is what makes three tickets placeable
-under a two-minute clock.
+### First time
+
+Double-click **`browsers.bat`**. Three windows open side by side. Sign a **different account
+into each** — left window gets account 1, middle gets account 2, right gets account 3.
+
+Each window is a separate Chromium profile with its own cookie jar, which is what lets three
+accounts be signed in at once: one browser profile holds one session per site, so a second
+account in the same profile signs the first one out.
+
+### Every time after
+
+Double-click `browsers.bat` again. The profiles persist in `profiles\`, so the windows come
+back already signed in, in the same order. Then run `start.bat` in a terminal alongside them.
+
+Keep the windows where they open. If you shuffle them you lose the only thing telling you
+which ticket belongs where, and a slip placed on the wrong account breaks the mutual
+exclusivity the ladder is sized against.
+
+### Options
+
+```bash
+python open_books.py --accounts 3                 # screen size auto-detected
+python open_books.py --screen 1366x768            # if auto-detect is wrong
+python open_books.py --dry-run                    # print commands, launch nothing
+python open_books.py --browser "C:\Program Files\Google\Chrome\Application\chrome.exe"
+```
 
 It opens labelled windows and nothing more: no user-agent or fingerprint masking, no proxy
 rotation, no automated placement.

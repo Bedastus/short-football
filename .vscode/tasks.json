@@ -38,17 +38,27 @@
       "type": "shell",
       "command": "python3",
       "windows": {
-        "command": "python"
+        "command": ".\\browsers.bat"
       },
-      "args": [
-        "open_books.py",
-        "--accounts",
-        "3",
-        "--screen",
-        "${input:screen}"
-      ],
+      "args": [],
       "problemMatcher": [],
-      "detail": "Three isolated browser profiles, tiled left to right in account order."
+      "detail": "Three isolated profiles, tiled: window 1 = soka-1 = slip A, 2 = soka-2 = B, 3 = soka-3 = C.",
+      "linux": {
+        "command": "python3",
+        "args": [
+          "open_books.py",
+          "--accounts",
+          "3"
+        ]
+      },
+      "osx": {
+        "command": "python3",
+        "args": [
+          "open_books.py",
+          "--accounts",
+          "3"
+        ]
+      }
     },
     {
       "label": "2. Init ladder (base 200, 5 stages)",

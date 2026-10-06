@@ -80,6 +80,20 @@ def find_browser(override: str | None) -> str:
     )
 
 
+def detect_screen(fallback: tuple[int, int] = (1920, 1080)) -> tuple[int, int]:
+    """Actual screen size, so the windows tile without being told the resolution."""
+    try:
+        import tkinter
+
+        root = tkinter.Tk()
+        root.withdraw()
+        size = (root.winfo_screenwidth(), root.winfo_screenheight())
+        root.destroy()
+        return size
+    except Exception:  # noqa: BLE001 - no display, or no tkinter; the default is fine
+        return fallback
+
+
 def tile(index: int, count: int, width: int, height: int) -> tuple[int, int, int, int]:
     """Left-to-right tiling across one screen, so window N is always account N.
 
@@ -117,7 +131,8 @@ def main() -> int:
     parser.add_argument("--browser", help="path to a Chromium-family browser")
     parser.add_argument("--profiles-dir", default=str(PROFILES))
     parser.add_argument("--names", nargs="*", help="profile names; default soka-1..N")
-    parser.add_argument("--screen", default="1920x1080", help="WIDTHxHEIGHT for tiling")
+    parser.add_argument("--screen", default="auto",
+                        help="WIDTHxHEIGHT for tiling, or 'auto' to detect")
     parser.add_argument("--incognito", action="store_true",
                         help="private windows; they will not remember logins")
     parser.add_argument("--dry-run", action="store_true")
@@ -125,12 +140,16 @@ def main() -> int:
 
     if args.accounts < 1:
         raise SystemExit("--accounts must be at least 1")
-    try:
-        width, height = (int(v) for v in args.screen.lower().split("x"))
-    except ValueError:
-        raise SystemExit(f"Bad --screen {args.screen!r}; expected e.g. 1920x1080")
+    if args.screen.lower() == "auto":
+        width, height = detect_screen()
+    else:
+        try:
+            width, height = (int(v) for v in args.screen.lower().split("x"))
+        except ValueError:
+            raise SystemExit(f"Bad --screen {args.screen!r}; expected e.g. 1920x1080")
 
     names = args.names or [f"soka-{i + 1}" for i in range(args.accounts)]
+    slips = ["A  Y Y Y", "B  N Y Y", "C  Y Y N"]
     if len(names) != args.accounts:
         raise SystemExit(f"Got {len(names)} names for {args.accounts} accounts")
 
@@ -147,7 +166,8 @@ def main() -> int:
         argv = command(browser, profile, args.url,
                        tile(index, args.accounts, width, height), args.incognito)
         state = "new profile, sign in" if fresh else "existing profile"
-        print(f"\n  [{index + 1}] {name}  ({state})")
+        carries = f"  carries slip {slips[index]}" if index < len(slips) else ""
+        print(f"\n  [{index + 1}] {name}{carries}  ({state})")
         if args.dry_run:
             print("      " + " ".join(argv))
             continue
@@ -158,8 +178,11 @@ def main() -> int:
             return 1
 
     if not args.dry_run:
-        print(f"\n{len(names)} window(s) opening, left to right in account order.")
-        print("Each profile keeps its own session; sign a different account into each.")
+        print(f"\n{len(names)} window(s) opening, left to right in account order:")
+        for index, name in enumerate(names[:len(slips)]):
+            print(f"  window {index + 1} (leftmost+{index})  {name}  -> slip {slips[index]}")
+        print("\nEach profile keeps its own session. Sign a DIFFERENT account into each,")
+        print("once - they are remembered, so later runs open already signed in.")
     return 0
 
 
