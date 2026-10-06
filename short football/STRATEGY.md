@@ -86,20 +86,19 @@ against the deficit actually carried:
 stake_k = ceil( (cumulative_{k-1} + target) / 0.7517 / 3 )
 ```
 
-**Stake table — base 100/slip, rounded up to 100 TZS:**
+**Stake table — base 200/slip, rounded up to 100 TZS:**
 
-| stage | per slip | per round | cumulative | worst payout | worst net | ×prev |
-|---|---|---|---|---|---|---|
-| 1 | 100 | 300 | 300 | 526 | +226 | — |
-| 2 | 200 | 600 | 900 | 1,051 | +151 | 2.00 |
-| 3 | 400 | 1,200 | 2,100 | 2,102 | +2 | 2.00 |
-| 4 | 1,000 | 3,000 | 5,100 | 5,255 | +155 | 2.50 |
-| 5 | 2,300 | 6,900 | 12,000 | 12,087 | +87 | 2.30 |
-| 6 | 5,400 | 16,200 | **28,200** | 28,378 | +178 | 2.35 |
+| stage | per slip | per round | cumulative | worst payout | worst net |
+|---|---|---|---|---|---|
+| 1 | 200 | 600 | 600 | 1,051 | +451 |
+| 2 | 300 | 900 | 1,500 | 1,577 | +77 |
+| 3 | 700 | 2,100 | 3,600 | 3,679 | +79 |
+| 4 | 1,600 | 4,800 | 8,400 | 8,408 | +8 |
+| 5 | 3,800 | 11,400 | **19,800** | 19,970 | +170 |
 
-**The 6-stage plan at base 100 needs 28,200 TZS, not 21,000.** (Deficit-driven sizing is
-tighter than the geometric curve: at base 300 the true requirement is 66,000, not the 106,200
-a fixed 2.34× table gives.)
+Base 200 is the largest stake whose whole 5-stage ladder fits a 20,000 budget on a 100-TZS
+grid (`sokaligi_math.py fit --budget 20000`), leaving 1,200 of the 21,000 bankroll spare.
+Base 300 would cost 29,700 and strand the ladder at stage 5.
 
 **5. The plan on a 21,000 bankroll is a 5-stage ladder, not a 6-stage one.**
 
@@ -116,14 +115,13 @@ Keeping all three on one feed is the strongest of the three layouts: mutual excl
 no coverage is wasted on slips overlapping each other. Expected value is −14.12% in every
 row — correlation moves ruin, never the mean.
 
-**Survival table, 3 SokaBet accounts at base 100:**
+**Survival table, 3 SokaBet accounts at base 200:**
 
 | stages funded | needs | P(bust/cycle) | loss on bust | EV/cycle |
 |---|---|---|---|---|
-| 3 | 2,100 | 0.1972 | −2,100 | −149 |
-| 4 | 5,100 | 0.1148 | −5,100 | −233 |
-| **5** | **12,000** | **0.0668** | **−12,000** | **−345** |
-| 6 | 28,200 | 0.0389 | −28,200 | −497 ← unfunded at 21,000 |
+| 3 | 3,600 | 0.1972 | −3,600 | −259 |
+| 4 | 8,400 | 0.1148 | −8,400 | −393 |
+| **5 (configured)** | **19,800** | **0.0668** | **−19,800** | **−578** |
 
 **6. The identity that ends the argument.**
 
@@ -140,17 +138,19 @@ turnover** — so escalating stakes increases the expected loss, it does not red
 **7. Time to ruin.**
 
 ```
-5 funded stages → P(bust) 0.0668/cycle → median 10.0 cycles
+5 funded stages at base 200 → P(bust) 0.0668/cycle → median 10.0 cycles
 match weeks run every 120s → 13.4 cycles/hour
 median time to lose the 21,000 bankroll:  45 MINUTES
-expected burn: −4,629 TZS/hour
+expected burn: −7,762 TZS/hour
 
-per cycle: closes in profit 93.3% of the time for +490
-           busts 6.7% of the time for −12,000
+per cycle: closes in profit 93.3% of the time for +798
+           busts 6.7% of the time for −19,800
 ```
 
-Reducing the stake from 300 to 100 and raising the bankroll to 21,000 bought roughly **four
-times longer before ruin**, at the same −14.12% per shilling. It bought time, not edge.
+Doubling the base from 100 to 200 doubled the profit per close (490 → 798) and doubled the
+bust loss (−12,000 → −19,800). The bust rate is unchanged at 6.68% and the edge is unchanged
+at −14.12%; only the hourly burn scales, from −4,629 to −7,762. Stake size moves the size of
+every outcome and none of their probabilities.
 
 **Robustness.** Re-run under Shin de-vig (loads margin onto the longshot) instead of
 proportional: edge moves from −14.12% to −13.74%. The conclusion does not depend on the
@@ -203,7 +203,7 @@ de-vig method.
 ## Verdict → 🔴 DROP
 
 **The one number: −14.12% of every shilling staked, fixed by the book's own prices, which no
-stake plan can move. On a 21,000 bankroll at base 100 the median time to ruin is 45 minutes.**
+stake plan can move. On a 21,000 bankroll at base 200 the median time to ruin is 45 minutes.**
 
 Gate-by-gate, per the risk rules:
 
@@ -242,17 +242,17 @@ The verdict above is unchanged — the math does not move. These are the setting
 being run under anyway, and `sokaligi_bot.py` enforces them:
 
 ```
-python sokaligi_bot.py init --bankroll 21000 --base 100 --stages 5 \
-    --books soka-1 soka-2 soka-3 --feed shared --stop-loss 12000
+python sokaligi_bot.py init --bankroll 21000 --base 200 --stages 5 --step 100 \
+    --books soka-1 soka-2 soka-3 --feed shared --stop-loss 19800
 
 python sokaligi_bot.py next   --odds 1.69,2.17 1.84,1.97 1.69,2.17
 python sokaligi_bot.py settle --results YNY      # one draw settles all three
 python sokaligi_bot.py status
 ```
 
-- **`--stages 5`** — fully funded: five stages cost 12,000 of the 21,000. A sixth stage
-  costs 16,200 more (28,200 cumulative), so at 21,000 the bot blocks there rather than
-  placing a stage it cannot settle.
+- **`--base 200`, `--stages 5`** — fully funded: the five stages cost 19,800 of the 21,000,
+  which is the largest ladder that fits a 20,000 budget. Solved with
+  `sokaligi_math.py fit --budget 20000 --stages 5`.
 - **`--feed shared`** — one SokaBet match week settles all three slips, so results are a
   single `YNY` triple. Groups like `0,0,1` remain available for a split layout.
 - **`--stop-loss`** caps session drawdown and is checked *before* each stake, not after.

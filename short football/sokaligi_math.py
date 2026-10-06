@@ -546,7 +546,12 @@ def cmd_ruin(args: argparse.Namespace) -> int:
 
     stakes = [r["per_round"] for r in rows[:affordable]]
     c = cycle_summary(dist, stakes, target)
-    print(f"\n  Real ladder on this bankroll: {affordable} stages, not {args.stages}.")
+    if affordable < args.stages:
+        print(f"\n  Real ladder on this bankroll: {affordable} stages, not "
+              f"{args.stages}.")
+    else:
+        print(f"\n  All {args.stages} stages funded, with "
+              f"{money(args.bankroll - rows[-1]['cumulative'])} to spare.")
     print(f"  P(bust) {c['p_bust']:.4f} per cycle -> median "
           f"{math.log(0.5) / math.log(1 - c['p_bust']):.1f} cycles before the "
           "bankroll is gone")
@@ -635,6 +640,74 @@ def cmd_promo(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_fit(args: argparse.Namespace) -> int:
+    """Largest base stake whose whole ladder still fits the budget.
+
+    Stake size is the only free parameter left once the stage count is fixed:
+    the ladder's shape is forced by the cheapest winning slip, so every stage
+    scales together. Picking the base by hand tends to leave the last stage
+    unfunded, which converts a 6.7% bust into a certainty of being stranded
+    mid-recovery. This walks the step grid instead and takes the largest base
+    that still completes.
+    """
+    s = round_summary(args.devig, args.feed)
+    worst = s["worst_win_return"]
+    dist = round_outcomes(args.devig, args.feed)
+
+    best: tuple[float, list[dict]] | None = None
+    base = args.step
+    while base <= args.budget:
+        rows = ladder(base, args.stages, args.step, worst, args.target * 3.0 * base)
+        if rows[-1]["cumulative"] > args.budget:
+            break
+        best = (base, rows)
+        base += args.step
+    if best is None:
+        print(f"Budget {money(args.budget)} cannot fund {args.stages} stages at any "
+              f"stake on a {money(args.step)} grid.")
+        return 1
+
+    base, rows = best
+    need = rows[-1]["cumulative"]
+    print(f"=== largest {args.stages}-stage ladder inside {money(args.budget)} ===")
+    print(f"  base stake {money(base)} per slip   ladder cost {money(need)}   "
+          f"headroom {money(args.budget - need)}")
+    print(f"\n  {'stage':>5s} {'per slip':>10s} {'per round':>11s} {'cumulative':>12s} "
+          f"{'worst payout':>13s} {'worst net':>10s}")
+    for row in rows:
+        print(f"  {row['stage']:5d} {money(row['per_slip']):>10s} "
+              f"{money(row['per_round']):>11s} {money(row['cumulative']):>12s} "
+              f"{money(row['worst_payout']):>13s} {money(row['worst_net']):>10s}")
+
+    stakes = [r["per_round"] for r in rows]
+    c = cycle_summary(dist, stakes, args.target * 3.0 * base)
+    per_hour = 3600.0 / SECONDS_PER_ROUND / c["mean_rounds"]
+    print(f"\n  P(cycle closes)  {1 - c['p_bust']:.4f}   mean profit "
+          f"{money(c['mean_close_profit'])}")
+    print(f"  P(cycle busts)   {c['p_bust']:.4f}   loss "
+          f"{money(c['mean_bust_loss'])}  = 1 in {c['cycles_to_bust']:.1f}")
+    print(f"  mean rounds per cycle {c['mean_rounds']:.3f}  ->  {per_hour:.1f} "
+          f"cycles/hour")
+    print(f"  expected value   {money(c['ev_per_cycle'])} per cycle, "
+          f"{money(c['ev_per_cycle'] * per_hour)} per hour")
+    print(f"  median {math.log(0.5) / math.log(1 - c['p_bust']):.1f} cycles "
+          f"({math.log(0.5) / math.log(1 - c['p_bust']) / per_hour * 60:.0f} min) "
+          "before a bust")
+
+    if base > args.step:
+        smaller = ladder(base - args.step, args.stages, args.step, worst,
+                         args.target * 3.0 * (base - args.step))
+        cs = cycle_summary(dist, [r["per_round"] for r in smaller],
+                           args.target * 3.0 * (base - args.step))
+        print(f"\n  next step down ({money(base - args.step)} base): cost "
+              f"{money(smaller[-1]['cumulative'])}, profit "
+              f"{money(cs['mean_close_profit'])} per close")
+    print("\n  Scaling the base scales profit and bust loss by the same factor;\n"
+          f"  the edge stays {s['edge']:+.2%} and the bust rate stays "
+          f"{c['p_bust']:.4f}.")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--devig", choices=sorted(DEVIGS), default="proportional")
@@ -658,6 +731,10 @@ def main() -> int:
     cycle_p = sub.add_parser("cycle", help="exact one-cycle distribution")
     common(cycle_p)
 
+    fit_p = sub.add_parser("fit", help="largest stake whose ladder fits a budget")
+    common(fit_p)
+    fit_p.add_argument("--budget", type=float, default=20000.0)
+
     ruin_p = sub.add_parser("ruin", help="risk of ruin on a real bankroll")
     common(ruin_p)
     ruin_p.add_argument("--bankroll", type=float, default=9784.75)
@@ -675,6 +752,7 @@ def main() -> int:
         "ladder": cmd_ladder,
         "cycle": cmd_cycle,
         "ruin": cmd_ruin,
+        "fit": cmd_fit,
         "breakeven": cmd_breakeven,
         "promo": cmd_promo,
     }[args.mode](args)
