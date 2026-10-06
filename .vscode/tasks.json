@@ -11,6 +11,29 @@
   },
   "tasks": [
     {
+      "label": "0. START (Windows one-click)",
+      "type": "shell",
+      "command": "./start.bat",
+      "windows": {
+        "command": ".\\start.bat"
+      },
+      "linux": {
+        "command": "python3 sokaligi_bot.py run"
+      },
+      "osx": {
+        "command": "python3 sokaligi_bot.py run"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": false,
+        "focus": true
+      },
+      "detail": "Sets the ladder up on first run, then goes straight into the round loop."
+    },
+    {
       "label": "1. Open 3 account browsers",
       "type": "shell",
       "command": "python3",

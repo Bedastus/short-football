@@ -29,14 +29,32 @@ python3 sokaligi_math.py price --odds 1.75,2.05 1.90,1.92 1.62,2.30
 python3 sokaligi_math.py fit   --odds 1.75,2.05 1.90,1.92 1.62,2.30 --stages 5 --budget 20000
 ```
 
-## Windows / PowerShell
+## Windows — start here
 
-Use `python`, not `python3`. **PowerShell does not accept `\` as a line continuation** — that
-is a bash thing, and it produces `Missing expression after unary operator '--'`. Either keep
-the command on one line, or end each line with a backtick `` ` ``.
+Double-click **`start.bat`**, or from PowerShell:
 
 ```powershell
 cd "C:\Users\Anonymous\Desktop\Projects\kiron Allan"
+.\start.bat
+```
+
+It sets the ladder up the first time and goes straight into the round loop every time after.
+Change the bankroll, base stake, stages or stop-loss by editing the four lines at the top of
+the file. `start.ps1` does the same job if you prefer PowerShell.
+
+Using the launcher avoids the one trap that catches everyone here: **PowerShell has no `\`
+line continuation.** That is a bash convention. Paste a wrapped bash-style command and
+PowerShell reads the `--` at the start of the second line as a unary operator:
+
+```
+Missing expression after unary operator '--'.
+Unexpected token 'books' in expression or statement.
+```
+
+If you do type commands by hand, keep each one on a **single line**, and use `python` or
+`py -3` rather than `python3`:
+
+```powershell
 python sokaligi_bot.py init --bankroll 21000 --base 200 --stages 5 --step 100 --books soka-1 soka-2 soka-3 --feed shared --stop-loss 19800
 python sokaligi_bot.py run
 ```
