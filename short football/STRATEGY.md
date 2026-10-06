@@ -103,29 +103,27 @@ a fixed 2.34× table gives.)
 
 **5. The plan on a 21,000 bankroll is a 5-stage ladder, not a 6-stage one.**
 
-Feed layout matters here. Two accounts at SokaBet are settled by **one** match week, so slips
-A and B stay mutually exclusive. A third account at a different operator draws separately —
-unless Gwala carries the same Kiron feed.
+All three accounts sit at SokaBet, so one match week settles every slip and the three stay
+mutually exclusive — at most one can win per round.
 
 | feed layout | P(round loses) | 5-stage bust | median survival |
 |---|---|---|---|
-| all three one feed | 0.5821 | 6.68% | 10.0 cycles ≈ **45 min** |
-| **2 SokaBet + 1 Gwala** | **0.6190** | **9.09%** | **7.3 cycles ≈ 35 min** |
-| three separate feeds | 0.6372 | 10.6% | 6.2 cycles ≈ 30 min |
+| **3 SokaBet accounts (configured)** | **0.5821** | **6.68%** | **10.0 cycles ≈ 45 min** |
+| split across two operators | 0.6190 | 9.09% | 7.3 cycles ≈ 35 min |
+| three separate operators | 0.6372 | 10.6% | 6.2 cycles ≈ 30 min |
 
-Counter-intuitive but exact: **splitting the third slip onto another operator makes the round
-lose *more* often** (61.9% vs 58.2%). Decorrelating removes the common Spurs failure for slip
-C, but it also destroys the mutual exclusivity that stopped the three slips wasting coverage
-on each other — and the second effect is larger.
+Keeping all three on one feed is the strongest of the three layouts: mutual exclusivity means
+no coverage is wasted on slips overlapping each other. Expected value is −14.12% in every
+row — correlation moves ruin, never the mean.
 
-**Survival table, your setup (2 SokaBet + 1 Gwala, base 100):**
+**Survival table, 3 SokaBet accounts at base 100:**
 
 | stages funded | needs | P(bust/cycle) | loss on bust | EV/cycle |
 |---|---|---|---|---|
-| 3 | 2,100 | 0.2372 | −2,100 | −160 |
-| 4 | 5,100 | 0.1469 | −5,100 | −260 |
-| **5** | **12,000** | **0.0909** | **−12,000** | **−403** |
-| 6 | 28,200 | 0.0563 | −28,200 | −611 ← unfunded at 21,000 |
+| 3 | 2,100 | 0.1972 | −2,100 | −149 |
+| 4 | 5,100 | 0.1148 | −5,100 | −233 |
+| **5** | **12,000** | **0.0668** | **−12,000** | **−345** |
+| 6 | 28,200 | 0.0389 | −28,200 | −497 ← unfunded at 21,000 |
 
 **6. The identity that ends the argument.**
 
@@ -142,15 +140,17 @@ turnover** — so escalating stakes increases the expected loss, it does not red
 **7. Time to ruin.**
 
 ```
-5 funded stages → P(bust) 0.0909/cycle → median 7.3 cycles
-match weeks run every 120s → 12.6 cycles/hour
-median time to lose the 21,000 bankroll:  35 MINUTES
-expected burn: −5,071 TZS/hour
+5 funded stages → P(bust) 0.0668/cycle → median 10.0 cycles
+match weeks run every 120s → 13.4 cycles/hour
+median time to lose the 21,000 bankroll:  45 MINUTES
+expected burn: −4,629 TZS/hour
+
+per cycle: closes in profit 93.3% of the time for +490
+           busts 6.7% of the time for −12,000
 ```
 
-If Gwala turns out to carry the same Kiron feed: 45 minutes, −4,629/hour. Reducing the stake
-from 300 to 100 and tripling the bankroll bought roughly **three times longer before ruin**,
-at the same −14.12% per shilling. It bought time, not edge.
+Reducing the stake from 300 to 100 and raising the bankroll to 21,000 bought roughly **four
+times longer before ruin**, at the same −14.12% per shilling. It bought time, not edge.
 
 **Robustness.** Re-run under Shin de-vig (loads margin onto the longshot) instead of
 proportional: edge moves from −14.12% to −13.74%. The conclusion does not depend on the
@@ -172,18 +172,15 @@ de-vig method.
    available — it credits SokaLigi with pricing its own RNG honestly. If the RNG is shaded
    against the price, every figure here is optimistic. *Does not change the verdict:* the
    result is already negative at the generous end.
-2. **Does Gwala carry the same Kiron feed as SokaBet?** `gwalabet.co.tz` is blocked by this
-   container's network policy, so it could not be checked from here — and the link given was
-   the `/casino` page, which is not where virtual football lives. Two things to confirm by
-   hand: that Gwala runs SokaLigi/Kiron virtual football at all, and whether its match-week
-   number matches SokaBet's. *Break-even value: none* — EV is −14.12% either way — but the
-   5-stage bust rate moves 6.68% → 9.09% and median survival 45 → 35 minutes.
-3. **Two accounts at one operator.** Slips A and B both sit on SokaBet. Bookmaker terms
-   generally prohibit multiple or linked accounts betting the same event, and shared device,
-   IP or payment details are the usual trigger. This is not a probability input — it is a
-   path where the ladder cannot complete at all: an account frozen at stage 5 strands 12,000
-   TZS mid-recovery with no way to close the cycle, and the balance at risk includes your
-   friend's. Worth reading SokaBet's terms before the first stake rather than after.
+2. **Three accounts at one operator.** All three slips sit on SokaBet, which is what keeps
+   them mutually exclusive and gives the 0.5821 loss rate above. Bookmaker terms generally
+   restrict multiple or linked accounts betting the same event; if an account is frozen
+   mid-ladder the cycle cannot close, stranding whatever is committed at that stage (12,000
+   at stage 5). Not a probability input — a path where the ladder does not complete.
+3. **Live odds drift.** Every figure here is computed from one round's prices. The controller
+   re-sizes each stage from the odds passed to `next`, so drift is handled; but if the
+   cheapest winning slip ever returns under 1.0 per unit of round stake, no stake recovers
+   that round and the bot says so rather than sizing one.
 4. **Derived-market consistency** — the screenshots show `1X2 & BTTS`, `1X2 & OV/UN 1.5`
    alongside plain `BTTS`. If the operator prices combined markets independently of their
    components, BTTS YES can be synthesised from `{1&Yes, X&Yes, 2&Yes}`. *Break-even value:
@@ -206,7 +203,7 @@ de-vig method.
 ## Verdict → 🔴 DROP
 
 **The one number: −14.12% of every shilling staked, fixed by the book's own prices, which no
-stake plan can move. On a 21,000 bankroll at base 100 the median time to ruin is 35 minutes.**
+stake plan can move. On a 21,000 bankroll at base 100 the median time to ruin is 45 minutes.**
 
 Gate-by-gate, per the risk rules:
 
@@ -232,8 +229,8 @@ convert many small wins into one large loss while paying 14.12% for the conversi
 the open questions:
 1. Read the Promos terms. If rollover < 20× and clearable on singles, that is a positive
    number — price it with `sokaligi_math.py promo --bonus B --rollover R`.
-2. Confirm Gwala carries Kiron virtual football, and compare its match-week number to
-   SokaBet's.
+2. Confirm all three accounts show the same match-week number before the first stake —
+   that is what the 0.5821 loss rate assumes.
 3. Log one round of `1X2 & BTTS` prices and test them against plain `BTTS` for a synthetic
    book sum below 1.000. That is the only edge here that could survive contact with the math.
 
@@ -246,18 +243,18 @@ being run under anyway, and `sokaligi_bot.py` enforces them:
 
 ```
 python sokaligi_bot.py init --bankroll 21000 --base 100 --stages 5 \
-    --books soka-mine soka-friend gwala --feed 0,0,1 --stop-loss 12000
+    --books soka-1 soka-2 soka-3 --feed shared --stop-loss 12000
 
 python sokaligi_bot.py next   --odds 1.69,2.17 1.84,1.97 1.69,2.17
-python sokaligi_bot.py settle --results NNY/YYN      # soka draw / gwala draw
+python sokaligi_bot.py settle --results YNY      # one draw settles all three
 python sokaligi_bot.py status
 ```
 
-- **`--stages 5`, not 6.** 21,000 funds five stages (12,000). Setting 6 does not create a
-  sixth stage; it only means the bot blocks at stage 6 with 12,000 already committed. To run
-  the 6-stage plan as written the bankroll is **28,200**.
-- **`--feed 0,0,1`** — slips A and B settle on one SokaBet match week, slip C on Gwala's.
-  Change to `shared` if the match-week numbers turn out to match.
+- **`--stages 5`** — fully funded: five stages cost 12,000 of the 21,000. A sixth stage
+  costs 16,200 more (28,200 cumulative), so at 21,000 the bot blocks there rather than
+  placing a stage it cannot settle.
+- **`--feed shared`** — one SokaBet match week settles all three slips, so results are a
+  single `YNY` triple. Groups like `0,0,1` remain available for a split layout.
 - **`--stop-loss`** caps session drawdown and is checked *before* each stake, not after.
 - The bot refuses to place a stage the bankroll cannot settle, which is the failure mode of
   running this by hand.

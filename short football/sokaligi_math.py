@@ -428,7 +428,7 @@ def cmd_price(args: argparse.Namespace) -> int:
 
     for feed in ("shared", "0,0,1", "independent"):
         s = round_summary(args.devig, feed)
-        label = {"shared": "one shared feed", "0,0,1": "2 SokaBet + 1 Gwala",
+        label = {"shared": "one shared feed", "0,0,1": "2 accounts + 1 elsewhere",
                  "independent": "three separate feeds"}.get(feed, feed)
         print(f"\n=== round of 3 slips, {label} ===")
         print(f"  P(at least one slip wins) {s['p_round_win']:.4f}")

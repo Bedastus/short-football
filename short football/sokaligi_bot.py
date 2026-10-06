@@ -67,12 +67,11 @@ MIN_LEDGER_TICKETS = 150
 # here rather than buried so that changing it is a deliberate act.
 SLIPS = {"A": (True, True, True), "B": (False, True, True), "C": (True, True, False)}
 
-# Two accounts at the same operator are settled by one match week, so slips A
-# and B see identical results however many people hold the accounts. A third
-# account elsewhere is only in the same group if that operator carries the same
-# Kiron feed - check the match-week number on both before trusting it.
-DEFAULT_BOOKS = ["soka-mine", "soka-friend", "gwala"]
-DEFAULT_FEED = "0,0,1"
+# All three accounts are at the same operator, so one match week settles every
+# slip and the three stay mutually exclusive: at most one can win per round.
+# `--feed` still takes groups, for a layout that later spans operators.
+DEFAULT_BOOKS = ["soka-1", "soka-2", "soka-3"]
+DEFAULT_FEED = "shared"
 
 LEDGER_FIELDS = [
     "placed_utc",
@@ -320,7 +319,7 @@ def parse_results(text: str, feed: str = "shared") -> dict[str, tuple[bool, ...]
 
     if "/" in text:
         # One triple per feed group, in group order: "YYY/YNY" means the
-        # SokaBet draw landed YYY and the Gwala draw landed YNY.
+        # first operator's draw landed YYY and the second's landed YNY.
         groups = M.parse_feed(feed or "shared", len(SLIPS))
         drawn = [triple(part) for part in text.split("/")]
         if len(drawn) != len(set(groups)):
