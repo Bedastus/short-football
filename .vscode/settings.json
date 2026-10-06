@@ -1,5 +1,7 @@
 {
-  "python.analysis.extraPaths": ["./short football"],
+  "python.analysis.extraPaths": [
+    "./short football"
+  ],
   "python.terminal.activateEnvironment": false,
   "terminal.integrated.cwd": "${workspaceFolder}/short football",
   "files.exclude": {
@@ -9,9 +11,14 @@
   "files.associations": {
     "*.code-workspace": "jsonc"
   },
-  "editor.rulers": [88],
+  "editor.rulers": [
+    88
+  ],
   "[python]": {
     "editor.tabSize": 4,
     "editor.insertSpaces": true
-  }
+  },
+  "code-runner.runInTerminal": true,
+  "code-runner.saveFileBeforeRun": true,
+  "code-runner.clearPreviousOutput": true
 }

@@ -61,6 +61,27 @@ python sokaligi_bot.py run
 
 `init` runs once per session. After that `run` is the only command you need.
 
+## If the prompt will not accept typing
+
+A prompt that sits there ignoring the keyboard means the script is running in a
+**read-only output pane** rather than a terminal. The giveaway is a header like:
+
+```
+[Running] cmd /c "...\start.bat"
+```
+
+That is the Code Runner extension, which prints to the Output panel. The panel cannot
+receive keystrokes, so `run` waits forever for odds you have no way to type.
+
+Fix it once, either way:
+
+- **Settings** — `Ctrl+,`, search `code-runner.runInTerminal`, tick it. (Already set in this
+  project's `.vscode/settings.json`, so reopening the folder is usually enough.)
+- **Or skip Code Runner** — open a terminal with ``Ctrl+` `` and run `.\start.bat` there, or
+  use **Terminal → Run Task → 0. START**.
+
+Anything that gives you a real terminal works; the Run button in the editor corner does not.
+
 ## VS Code
 
 Tasks live in `.vscode/tasks.json`. **Terminal → Run Task**, numbered in running order:
