@@ -98,11 +98,21 @@ class PlacementAdapter:
 
     def place(self, tickets: list[dict], feed: str = "shared",
               hint: bool = True) -> None:
-        width = max(len(t["book"]) for t in tickets)
-        print("\n  PLACE NOW - one ticket per account, same match week:")
+        # One card per person, each spelling the three BTTS picks against the
+        # match names, so three people at three screens each read only theirs
+        # and nobody has to decode "Y Y Y" under a two-minute clock.
+        matches = list(M.MARKETS)
+        print("\n  DISTRIBUTE - each person places ONE ticket on their own account:")
         for t in tickets:
-            print(f"    {t['book']:>{width}s}  slip {t['slip']}  {t['legs']:9s} "
-                  f"@ {t['odds']:.3f}  stake {t['stake']:,.0f}")
+            picks = t["legs"].split()
+            print(f"\n  +-- {t['book']}  (slip {t['slip']}) "
+                  + "-" * max(2, 34 - len(t['book'])))
+            for match, pick in zip(matches, picks):
+                word = "YES" if pick == "Y" else "NO "
+                print(f"  |   BTTS {word}   {match}")
+            print(f"  |   combined odds {t['odds']:.3f}   "
+                  f"STAKE {t['stake']:,.0f}")
+            print("  +" + "-" * 44)
         if not hint:
             return
         draws = len(set(M.parse_feed(feed, len(tickets))))
@@ -217,6 +227,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         "stop_loss": args.stop_loss if args.stop_loss > 0 else args.bankroll,
         "books": args.books,
         "feed": args.feed,
+        "rotate": args.rotate,
         "cycle": 1,
         "stage": 0,
         "cycle_staked": 0.0,
@@ -284,15 +295,21 @@ def plan_round(state: dict, odds: list[tuple[float, float]]) -> dict:
             f"{state['stop_loss']:,.0f} stop-loss. Stopping."
         )
 
+    # People are assigned to slips in a fixed order, rotated by cycle when
+    # `rotate` is on so each person spends an equal share of rounds on slip A.
+    people = list(state["books"])
+    if state.get("rotate"):
+        shift = (state["cycle"] - 1) % len(people)
+        people = people[shift:] + people[:shift]
     tickets = [
         {
-            "book": book,
+            "book": person,
             "slip": key,
             "legs": " ".join("Y" if yes else "N" for yes in slip),
             "odds": slip_odds(slip, odds),
             "stake": per_slip,
         }
-        for book, (key, slip) in zip(state["books"], SLIPS.items())
+        for person, (key, slip) in zip(people, SLIPS.items())
     ]
     return {
         "stage": stage,
@@ -619,6 +636,25 @@ def cmd_status(args: argparse.Namespace) -> int:
             print("  Ledger and model disagree by more than 5 points. The ledger "
                   "wins:\n  re-check the de-vig assumption before trusting any "
                   "figure above.")
+
+    # Per-person tally, so three people can see what each account has placed
+    # and returned - the number to settle up on if the bankroll is not pooled.
+    by_person: dict[str, list[float]] = {}
+    for row in rows:
+        s, b, w = by_person.setdefault(row["book"], [0.0, 0.0, 0])
+        by_person[row["book"]] = [s + float(row["stake"]),
+                                  b + float(row["returned"]), w + int(row["won"])]
+    if len(by_person) > 1:
+        print("\n=== per person ===")
+        name_w = max(len(name) for name in by_person)
+        for name, (s, b, w) in by_person.items():
+            tickets = sum(1 for r in rows if r["book"] == name)
+            print(f"  {name:>{name_w}s}  staked {s:>9,.0f}  returned {b:>9,.0f}  "
+                  f"net {b - s:>+9,.0f}  ({w}/{tickets} won)")
+        if state.get("rotate"):
+            print("  (slips rotate each cycle, so these even out over time)")
+        else:
+            print("  (fixed slips; slip A sits on one person - pass --rotate to share)")
     return 0
 
 
@@ -649,6 +685,8 @@ def main() -> int:
     i.add_argument("--books", nargs=3, default=DEFAULT_BOOKS)
     i.add_argument("--feed", default=DEFAULT_FEED,
                    help="which draw settles each slip; shared, independent, or 0,0,1")
+    i.add_argument("--rotate", action="store_true",
+                   help="rotate who holds slip A/B/C each cycle, for fair sharing")
 
     n = sub.add_parser("next", help="size and place the next stage")
     n.add_argument("--odds", nargs=3, required=True,

@@ -134,6 +134,38 @@ cycle 1  stage 2/5  bankroll 20,400  deficit 600
 Results are one triple in match order — Leeds, Spurs, N.Forest — `Y` where both teams scored.
 One triple because one SokaBet draw settles all three accounts.
 
+## Three people, three accounts
+
+This is built for three people each on their own SokaBet account, one ticket per game — within
+the one-ticket-per-game rule. Name the accounts after the people at `init`:
+
+```
+python sokaligi_bot.py init --bankroll 21000 --base 200 --stages 5 --step 100 --books Allan Baraka Juma --feed shared --stop-loss 19800
+```
+
+Each round the bot prints one card per person, with the picks spelled out so nobody decodes
+`Y Y Y` against the clock:
+
+```
+  +-- Allan  (slip A) -----------------------------
+  |   BTTS YES   Leeds/London Reds
+  |   BTTS YES   Spurs/Leicester
+  |   BTTS YES   N.Forest/London Blues
+  |   combined odds 5.255   STAKE 200
+  +--------------------------------------------
+```
+
+Everyone places their own ticket on their own account. The bot never touches the accounts; it
+assigns and tracks.
+
+**Fair sharing with `--rotate`.** Slip A sits at shorter odds than B and C, so whoever holds
+it wins a little more often for a little less. Pass `--rotate` at init and the A/B/C
+assignment rotates each cycle, so over time each person spends an equal share on each slip.
+Leave it off if the bankroll is pooled and it doesn't matter who holds what.
+
+**Settling up.** `python sokaligi_bot.py status` shows a per-person line — staked, returned,
+net, tickets won — which is the number to square up on if the three keep separate money.
+
 ## The three slips
 
 | account | slip | Leeds | Spurs | N.Forest |
