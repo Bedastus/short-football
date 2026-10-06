@@ -157,43 +157,84 @@ def slip_price(slip: tuple[bool, ...], probs: dict[str, tuple[float, float, floa
 # -------------------------------------------------- one round, exactly priced
 
 
+def parse_feed(spec: str, books: int = 3) -> list[int]:
+    """Which draw settles each slip, as a group index per slip.
+
+    Two accounts at the same operator are settled by one match week, so they
+    share a group whether or not they are held by the same person. A third
+    account at a different operator is only in the same group if that operator
+    carries the same Kiron feed - which is a fact to check, not assume.
+
+        shared        -> [0, 0, 0]   one Kiron feed behind all three
+        independent   -> [0, 1, 2]   three operators drawing separately
+        "0,0,1"       -> slips A and B on one feed, slip C on another
+    """
+    if spec == "shared":
+        return [0] * books
+    if spec == "independent":
+        return list(range(books))
+    groups = [int(part) for part in spec.split(",")]
+    if len(groups) != books:
+        raise SystemExit(f"--feed needs {books} group indices, got {len(groups)}")
+    return groups
+
+
 def round_outcomes(method: str, feed: str) -> list[tuple[float, float]]:
     """(probability, gross return per 1 unit of *total round stake*) per outcome.
 
     One unit of round stake means the three slips together, so each slip
     carries one third of it. A return above 1.0 is a winning round.
+
+    Each feed group draws its own match week; slips settled by the same group
+    see the same three results, which is what makes slips A and B mutually
+    exclusive. Enumeration is 8**(number of groups), so at most 512 outcomes -
+    small enough to be exact rather than sampled.
     """
     probs = leg_probabilities(method)
     priced = {name: slip_price(slip, probs) for name, slip in SLIPS.items()}
+    groups = parse_feed(feed, len(SLIPS))
+    distinct = sorted(set(groups))
 
-    if feed == "shared":
-        # One Kiron draw settles all three books. Enumerate the eight ways the
-        # three matches can land and see which slip, if any, survives.
-        dist: list[tuple[float, float]] = []
-        for draw in itertools.product([True, False], repeat=len(MARKETS)):
-            probability = 1.0
-            for (name, _), yes in zip(MARKETS.items(), draw):
-                p_yes, p_no, _ = probs[name]
-                probability *= p_yes if yes else p_no
-            gross = sum(
-                priced[key][0] / 3.0 for key, slip in SLIPS.items() if slip == draw
-            )
-            dist.append((probability, gross))
-        return dist
+    draws = list(itertools.product([True, False], repeat=len(MARKETS)))
 
-    # Each operator draws its own match week, so the slips win or lose
-    # independently and more than one can land.
-    keys = list(SLIPS)
-    dist = []
-    for pattern in itertools.product([True, False], repeat=len(keys)):
-        probability, gross = 1.0, 0.0
-        for key, won in zip(keys, pattern):
-            odds, p = priced[key]
-            probability *= p if won else 1.0 - p
-            if won:
-                gross += odds / 3.0
+    def draw_probability(draw: tuple[bool, ...]) -> float:
+        probability = 1.0
+        for (name, _), yes in zip(MARKETS.items(), draw):
+            p_yes, p_no, _ = probs[name]
+            probability *= p_yes if yes else p_no
+        return probability
+
+    dist: list[tuple[float, float]] = []
+    for combo in itertools.product(draws, repeat=len(distinct)):
+        drawn = dict(zip(distinct, combo))
+        probability = 1.0
+        for draw in combo:
+            probability *= draw_probability(draw)
+        gross = sum(
+            priced[key][0] / 3.0
+            for (key, slip), group in zip(SLIPS.items(), groups)
+            if slip == drawn[group]
+        )
         dist.append((probability, gross))
-    return dist
+    return collapse(dist)
+
+
+def collapse(dist: list[tuple[float, float]], places: int = 9) -> list[tuple[float, float]]:
+    """Merge outcomes paying the same return, summing their probabilities.
+
+    The ladder only ever sees a round's return, not which slip produced it, and
+    distinct draws collide constantly: slips B and C are both priced 6.748, so
+    "B won" and "C won" are the same event to the ladder. Merging is exact - no
+    probability is lost - and it is what makes the cycle tractable. The mixed
+    two-operator feed has 64 raw outcomes but only a handful of distinct
+    returns, so the six-stage enumeration falls from 64**6 paths to a few
+    thousand.
+    """
+    merged: dict[float, float] = {}
+    for probability, gross in dist:
+        key = round(gross, places)
+        merged[key] = merged.get(key, 0.0) + probability
+    return sorted((p, g) for g, p in merged.items())
 
 
 def round_summary(method: str, feed: str) -> dict[str, float]:
@@ -246,12 +287,36 @@ def min_multiplier(worst_win: float, stages: int, target: float) -> float:
     return high
 
 
-def ladder(base: float, stages: int, multiplier: float, step: float) -> list[dict]:
-    """Stake table. Stakes round *up* to `step`: rounding down breaks recovery."""
+def ladder(
+    base: float, stages: int, step: float, worst: float, target: float = 0.0
+) -> list[dict]:
+    """Stake table, sized from the deficit actually carried rather than a curve.
+
+    A fixed geometric multiplier stops working as soon as stakes are rounded:
+    rounding stage 2 up from 232 to 300 inflates the cumulative, and the stage
+    3 the curve prescribes no longer covers it. At base 300 the rounding is
+    small enough to hide this; at base 100 it drives the worst-case net
+    negative from stage 4 on, which means the ladder is not recovering even
+    when it wins.
+
+    So each stage is solved against the real cumulative instead, exactly as
+    `sokaligi_bot.stage_stake` does when it sizes a live round:
+
+        stake_k = ceil( (cumulative_{k-1} + target) / (worst - 1) / 3 )
+
+    and stakes round up, never down. Worst-case net is then non-negative at
+    every stage by construction.
+    """
+    gain = worst - 1.0
+    if gain <= 0.0:
+        raise SystemExit("Even a winning round loses at these odds; no ladder recovers.")
+
+    def round_up(value: float) -> float:
+        return math.ceil(value / step) * step if step > 0 else value
+
     rows, cumulative = [], 0.0
     for k in range(1, stages + 1):
-        raw = base * multiplier ** (k - 1)
-        per_slip = math.ceil(raw / step) * step if step > 0 else raw
+        per_slip = base if k == 1 else round_up((cumulative + target) / gain / 3.0)
         per_round = 3.0 * per_slip
         cumulative += per_round
         rows.append(
@@ -260,6 +325,8 @@ def ladder(base: float, stages: int, multiplier: float, step: float) -> list[dic
                 "per_slip": per_slip,
                 "per_round": per_round,
                 "cumulative": cumulative,
+                "worst_payout": worst * per_round,
+                "worst_net": worst * per_round - cumulative,
             }
         )
     return rows
@@ -359,9 +426,11 @@ def cmd_price(args: argparse.Namespace) -> int:
     print(f"  per-leg returns {' x '.join(f'{1 / probs[n][2]:.4f}' for n in MARKETS)}"
           f" = {product:.4f}  ->  {product - 1:+.2%} per shilling on any treble")
 
-    for feed in ("shared", "independent"):
+    for feed in ("shared", "0,0,1", "independent"):
         s = round_summary(args.devig, feed)
-        print(f"\n=== round of 3 slips, {feed} feed ===")
+        label = {"shared": "one shared feed", "0,0,1": "2 SokaBet + 1 Gwala",
+                 "independent": "three separate feeds"}.get(feed, feed)
+        print(f"\n=== round of 3 slips, {label} ===")
         print(f"  P(at least one slip wins) {s['p_round_win']:.4f}")
         print(f"  P(round loses outright)   {s['p_round_loss']:.4f}")
         print(f"  gross return per unit     {s['ev_per_unit']:.4f}  "
@@ -389,18 +458,18 @@ def cmd_ladder(args: argparse.Namespace) -> int:
     print("  (a plain 2x double never recovers here: a treble ladder needs the\n"
           "   multiplier the *cheapest* winning slip can pay back, not 2.)")
 
-    use = args.multiplier or math.ceil(m * 100) / 100
     print(f"\n=== stake table, base {money(args.base)} per slip, "
-          f"multiplier {use:.2f}, rounded up to {money(args.step)} ===")
-    rows = ladder(args.base, args.stages, use, args.step)
+          f"sized from the carried deficit, rounded up to {money(args.step)} ===")
+    rows = ladder(args.base, args.stages, args.step, worst, args.target * 3 * args.base)
     print(f"  {'stage':>5s} {'per slip':>11s} {'per round':>11s} "
-          f"{'cumulative':>12s} {'worst payout':>13s} {'worst net':>11s}")
-    for row in rows:
-        payout = worst * row["per_round"]
+          f"{'cumulative':>12s} {'worst payout':>13s} {'worst net':>11s} "
+          f"{'x prev':>7s}")
+    for index, row in enumerate(rows):
+        ratio = row["per_round"] / rows[index - 1]["per_round"] if index else 1.0
         print(f"  {row['stage']:5d} {money(row['per_slip']):>11s} "
               f"{money(row['per_round']):>11s} {money(row['cumulative']):>12s} "
-              f"{money(payout):>13s} "
-              f"{money(payout - row['cumulative']):>11s}")
+              f"{money(row['worst_payout']):>13s} "
+              f"{money(row['worst_net']):>11s} {ratio:7.2f}")
     need = rows[-1]["cumulative"]
     print(f"\n  bankroll to run all {args.stages} stages: {money(need)}")
     if args.bankroll:
@@ -421,15 +490,13 @@ def cmd_ladder(args: argparse.Namespace) -> int:
 def cmd_cycle(args: argparse.Namespace) -> int:
     s = round_summary(args.devig, args.feed)
     worst = s["worst_win_return"]
-    m = args.multiplier or math.ceil(min_multiplier(worst, args.stages, args.target) * 100) / 100
-    rows = ladder(args.base, args.stages, m, args.step)
+    rows = ladder(args.base, args.stages, args.step, worst, args.target * 3 * args.base)
     stakes = [r["per_round"] for r in rows]
     dist = round_outcomes(args.devig, args.feed)
     target = args.target * 3.0 * args.base
     c = cycle_summary(dist, stakes, target)
 
-    print(f"=== one martingale cycle, {args.stages} stages, {args.feed} feed, "
-          f"multiplier {m:.2f} ===")
+    print(f"=== one martingale cycle, {args.stages} stages, feed {args.feed} ===")
     print(f"  P(cycle closes in profit) {1 - c['p_bust']:.4f}")
     print(f"  P(cycle busts)            {c['p_bust']:.4f}  "
           f"= 1 in {c['cycles_to_bust']:.1f} cycles")
@@ -454,8 +521,7 @@ def cmd_cycle(args: argparse.Namespace) -> int:
 def cmd_ruin(args: argparse.Namespace) -> int:
     s = round_summary(args.devig, args.feed)
     worst = s["worst_win_return"]
-    m = args.multiplier or math.ceil(min_multiplier(worst, args.stages, args.target) * 100) / 100
-    rows = ladder(args.base, args.stages, m, args.step)
+    rows = ladder(args.base, args.stages, args.step, worst, args.target * 3 * args.base)
     dist = round_outcomes(args.devig, args.feed)
     target = args.target * 3.0 * args.base
 
@@ -575,10 +641,10 @@ def main() -> int:
     sub = parser.add_subparsers(dest="mode", required=True)
 
     def common(p: argparse.ArgumentParser) -> None:
-        p.add_argument("--feed", choices=("shared", "independent"), default="shared")
+        p.add_argument("--feed", default="shared",
+                       help="shared, independent, or per-slip groups like 0,0,1")
         p.add_argument("--stages", type=int, default=6)
         p.add_argument("--base", type=float, default=300.0)
-        p.add_argument("--multiplier", type=float, help="override the solved one")
         p.add_argument("--step", type=float, default=100.0, help="stake rounding")
         p.add_argument("--target", type=float, default=0.0,
                        help="profit on close, in base round stakes")

@@ -74,31 +74,58 @@ stake, netting 0.7517. Recovery needs `0.7517·(m−1) ≥ 1`:
 m ≥ 1 + 1/0.7517 = 2.3302        (2.3100 if you only ever need 6 stages)
 ```
 
-A 2× double **never recovers** here. At m = 2.34, base 300/slip:
+A 2× double **never recovers** here.
 
-| stage | per slip | per round | cumulative | worst payout | worst net |
-|---|---|---|---|---|---|
-| 1 | 300 | 900 | 900 | 1,577 | +677 |
-| 2 | 700 | 2,100 | 3,000 | 3,679 | +679 |
-| 3 | 1,700 | 5,100 | 8,100 | 8,934 | +834 |
-| 4 | 3,800 | 11,400 | 19,500 | 19,970 | +470 |
-| 5 | 8,700 | 26,100 | 45,600 | 45,720 | +120 |
-| 6 | 20,200 | 60,600 | **106,200** | 106,156 | −44 |
+But a fixed multiplier is the wrong tool once stakes are rounded to whole shillings.
+Rounding stage 2 up from 232 to 300 inflates the cumulative, and the stage 3 the curve
+prescribes no longer covers it — at base 100 the worst-case net goes *negative* from stage 4
+on, meaning the ladder stops recovering even when it wins. Each stage is therefore sized
+against the deficit actually carried:
 
-**The 6-stage plan needs 106,200 TZS. The screenshot balance is 9,784.75 — 9.2% of it.**
+```
+stake_k = ceil( (cumulative_{k-1} + target) / 0.7517 / 3 )
+```
 
-**5. The plan on this bankroll is a 3-stage ladder, not a 6-stage one.**
+**Stake table — base 100/slip, rounded up to 100 TZS:**
 
-| stages funded | needs | P(bust per cycle) | loss on bust | EV per cycle |
+| stage | per slip | per round | cumulative | worst payout | worst net | ×prev |
+|---|---|---|---|---|---|---|
+| 1 | 100 | 300 | 300 | 526 | +226 | — |
+| 2 | 200 | 600 | 900 | 1,051 | +151 | 2.00 |
+| 3 | 400 | 1,200 | 2,100 | 2,102 | +2 | 2.00 |
+| 4 | 1,000 | 3,000 | 5,100 | 5,255 | +155 | 2.50 |
+| 5 | 2,300 | 6,900 | 12,000 | 12,087 | +87 | 2.30 |
+| 6 | 5,400 | 16,200 | **28,200** | 28,378 | +178 | 2.35 |
+
+**The 6-stage plan at base 100 needs 28,200 TZS, not 21,000.** (Deficit-driven sizing is
+tighter than the geometric curve: at base 300 the true requirement is 66,000, not the 106,200
+a fixed 2.34× table gives.)
+
+**5. The plan on a 21,000 bankroll is a 5-stage ladder, not a 6-stage one.**
+
+Feed layout matters here. Two accounts at SokaBet are settled by **one** match week, so slips
+A and B stay mutually exclusive. A third account at a different operator draws separately —
+unless Gwala carries the same Kiron feed.
+
+| feed layout | P(round loses) | 5-stage bust | median survival |
+|---|---|---|---|
+| all three one feed | 0.5821 | 6.68% | 10.0 cycles ≈ **45 min** |
+| **2 SokaBet + 1 Gwala** | **0.6190** | **9.09%** | **7.3 cycles ≈ 35 min** |
+| three separate feeds | 0.6372 | 10.6% | 6.2 cycles ≈ 30 min |
+
+Counter-intuitive but exact: **splitting the third slip onto another operator makes the round
+lose *more* often** (61.9% vs 58.2%). Decorrelating removes the common Spurs failure for slip
+C, but it also destroys the mutual exclusivity that stopped the three slips wasting coverage
+on each other — and the second effect is larger.
+
+**Survival table, your setup (2 SokaBet + 1 Gwala, base 100):**
+
+| stages funded | needs | P(bust/cycle) | loss on bust | EV/cycle |
 |---|---|---|---|---|
-| 1 | 900 | 0.5821 | −900 | −127 |
-| 2 | 3,000 | 0.3388 | −3,000 | −300 |
-| **3** | **8,100** | **0.1972** | **−8,100** | **−544** |
-| 4 | 19,500 | 0.1148 | −19,500 | −861 ← unfunded |
-| 5 | 45,600 | 0.0668 | −45,600 | −1,284 ← unfunded |
-| 6 | 106,200 | 0.0389 | −110,400 | −1,929 ← unfunded |
-
-The plan assumes a 3.9% bust rate. The bankroll delivers **19.7%** — five times higher.
+| 3 | 2,100 | 0.2372 | −2,100 | −160 |
+| 4 | 5,100 | 0.1469 | −5,100 | −260 |
+| **5** | **12,000** | **0.0909** | **−12,000** | **−403** |
+| 6 | 28,200 | 0.0563 | −28,200 | −611 ← unfunded at 21,000 |
 
 **6. The identity that ends the argument.**
 
@@ -115,11 +142,15 @@ turnover** — so escalating stakes increases the expected loss, it does not red
 **7. Time to ruin.**
 
 ```
-3 funded stages → P(bust) 0.1972/cycle → median 3.2 cycles
-match weeks run every 120s → 15.6 cycles/hour
-median time to lose the 9,785 bankroll:  12 MINUTES
-expected burn: −8,492 TZS/hour (−25,167/hour if the full ladder were funded)
+5 funded stages → P(bust) 0.0909/cycle → median 7.3 cycles
+match weeks run every 120s → 12.6 cycles/hour
+median time to lose the 21,000 bankroll:  35 MINUTES
+expected burn: −5,071 TZS/hour
 ```
+
+If Gwala turns out to carry the same Kiron feed: 45 minutes, −4,629/hour. Reducing the stake
+from 300 to 100 and tripling the bankroll bought roughly **three times longer before ruin**,
+at the same −14.12% per shilling. It bought time, not edge.
 
 **Robustness.** Re-run under Shin de-vig (loads margin onto the longshot) instead of
 proportional: edge moves from −14.12% to −13.74%. The conclusion does not depend on the
@@ -141,18 +172,24 @@ de-vig method.
    available — it credits SokaLigi with pricing its own RNG honestly. If the RNG is shaded
    against the price, every figure here is optimistic. *Does not change the verdict:* the
    result is already negative at the generous end.
-2. **Shared vs independent Kiron feed across the three bookmakers.** "Match Week #35624537"
-   is a global ID, which looks like a shared feed. *Break-even value: none.* EV is −14.12%
-   either way; only ruin moves (3.9% vs 6.7% per cycle at full funding). Verify by comparing
-   the match-week number on all three books before the first stake — **if the feeds are
-   independent, the overlapping-slip design has no purpose at all**, since the hedge only
-   means anything when one draw settles all three tickets.
-3. **Derived-market consistency** — the screenshots show `1X2 & BTTS`, `1X2 & OV/UN 1.5`
+2. **Does Gwala carry the same Kiron feed as SokaBet?** `gwalabet.co.tz` is blocked by this
+   container's network policy, so it could not be checked from here — and the link given was
+   the `/casino` page, which is not where virtual football lives. Two things to confirm by
+   hand: that Gwala runs SokaLigi/Kiron virtual football at all, and whether its match-week
+   number matches SokaBet's. *Break-even value: none* — EV is −14.12% either way — but the
+   5-stage bust rate moves 6.68% → 9.09% and median survival 45 → 35 minutes.
+3. **Two accounts at one operator.** Slips A and B both sit on SokaBet. Bookmaker terms
+   generally prohibit multiple or linked accounts betting the same event, and shared device,
+   IP or payment details are the usual trigger. This is not a probability input — it is a
+   path where the ladder cannot complete at all: an account frozen at stage 5 strands 12,000
+   TZS mid-recovery with no way to close the cycle, and the balance at risk includes your
+   friend's. Worth reading SokaBet's terms before the first stake rather than after.
+4. **Derived-market consistency** — the screenshots show `1X2 & BTTS`, `1X2 & OV/UN 1.5`
    alongside plain `BTTS`. If the operator prices combined markets independently of their
    components, BTTS YES can be synthesised from `{1&Yes, X&Yes, 2&Yes}`. *Break-even value:
    synthetic book sum < 1.000.* This is the only structurally sound edge available and it is
    directly checkable with this repo's existing `arb_scan.py` method. **NOT YET MEASURED.**
-4. **The Promos tab** (badge visible in all three screenshots). A bonus B at rollover R costs
+5. **The Promos tab** (badge visible in all three screenshots). A bonus B at rollover R costs
    `R·B·margin` to clear, so it is +EV iff `R < 1/margin`:
 
    | cleared with | margin | max rollover |
@@ -169,7 +206,7 @@ de-vig method.
 ## Verdict → 🔴 DROP
 
 **The one number: −14.12% of every shilling staked, fixed by the book's own prices, which no
-stake plan can move. On a 9,785 bankroll the median time to ruin is 12 minutes.**
+stake plan can move. On a 21,000 bankroll at base 100 the median time to ruin is 35 minutes.**
 
 Gate-by-gate, per the risk rules:
 
@@ -191,19 +228,42 @@ wins out of a hundred is an extremely convincing experience, and the 3.9% that p
 of them arrives as a single −110,400 loss. The strategy is not a way to win; it is a way to
 convert many small wins into one large loss while paying 14.12% for the conversion.
 
-**Next step, sized by the risk rule:** stake **0**. Spend the next session measuring, not
-betting:
+**Next step, sized by the risk rule:** stake **0**. Three measurements cost nothing and settle
+the open questions:
 1. Read the Promos terms. If rollover < 20× and clearable on singles, that is a positive
    number — price it with `sokaligi_math.py promo --bonus B --rollover R`.
-2. Compare the match-week number across all three books (one minute, zero cost, settles
-   NEED DATA #2).
-3. Log a round of `1X2 & BTTS` prices and test them against plain `BTTS` for a synthetic
+2. Confirm Gwala carries Kiron virtual football, and compare its match-week number to
+   SokaBet's.
+3. Log one round of `1X2 & BTTS` prices and test them against plain `BTTS` for a synthetic
    book sum below 1.000. That is the only edge here that could survive contact with the math.
 
-If you want to run the plan anyway on money you are willing to lose, `sokaligi_bot.py`
-enforces the ladder correctly and refuses to place a stage the bankroll cannot settle —
-which is where the hand-run version fails. Set `--stages 3`, since that is what 9,785 funds,
-and `--stop-loss` to the amount you accept losing. It will not make the system profitable.
+---
+
+## Operating parameters (strategy retained by the operator's decision)
+
+The verdict above is unchanged — the math does not move. These are the settings the plan is
+being run under anyway, and `sokaligi_bot.py` enforces them:
+
+```
+python sokaligi_bot.py init --bankroll 21000 --base 100 --stages 5 \
+    --books soka-mine soka-friend gwala --feed 0,0,1 --stop-loss 12000
+
+python sokaligi_bot.py next   --odds 1.69,2.17 1.84,1.97 1.69,2.17
+python sokaligi_bot.py settle --results NNY/YYN      # soka draw / gwala draw
+python sokaligi_bot.py status
+```
+
+- **`--stages 5`, not 6.** 21,000 funds five stages (12,000). Setting 6 does not create a
+  sixth stage; it only means the bot blocks at stage 6 with 12,000 already committed. To run
+  the 6-stage plan as written the bankroll is **28,200**.
+- **`--feed 0,0,1`** — slips A and B settle on one SokaBet match week, slip C on Gwala's.
+  Change to `shared` if the match-week numbers turn out to match.
+- **`--stop-loss`** caps session drawdown and is checked *before* each stake, not after.
+- The bot refuses to place a stage the bankroll cannot settle, which is the failure mode of
+  running this by hand.
+- Every round is logged to `data/sokaligi_ledger.csv`. After 150 tickets `status` compares the
+  realised rate against the model's −14.12%. **That ledger is the EV check** — if the two
+  disagree by more than 5 points, the ledger wins and the model gets re-examined.
 
 ---
 

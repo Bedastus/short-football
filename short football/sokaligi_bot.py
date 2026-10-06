@@ -67,6 +67,13 @@ MIN_LEDGER_TICKETS = 150
 # here rather than buried so that changing it is a deliberate act.
 SLIPS = {"A": (True, True, True), "B": (False, True, True), "C": (True, True, False)}
 
+# Two accounts at the same operator are settled by one match week, so slips A
+# and B see identical results however many people hold the accounts. A third
+# account elsewhere is only in the same group if that operator carries the same
+# Kiron feed - check the match-week number on both before trusting it.
+DEFAULT_BOOKS = ["soka-mine", "soka-friend", "gwala"]
+DEFAULT_FEED = "0,0,1"
+
 LEDGER_FIELDS = [
     "placed_utc",
     "cycle",
@@ -90,13 +97,17 @@ class PlacementAdapter:
 
     name = "manual"
 
-    def place(self, tickets: list[dict]) -> None:
+    def place(self, tickets: list[dict], feed: str = "shared") -> None:
+        width = max(len(t["book"]) for t in tickets)
         print("\n  PLACE NOW - one ticket per account, same match week:")
         for t in tickets:
-            print(f"    {t['book']:>8s}  slip {t['slip']}  {t['legs']:9s} "
+            print(f"    {t['book']:>{width}s}  slip {t['slip']}  {t['legs']:9s} "
                   f"@ {t['odds']:.3f}  stake {t['stake']:,.0f}")
-        print("\n  Then record the match week's BTTS results, e.g.:")
-        print("    python sokaligi_bot.py settle --results YNY")
+        draws = len(set(M.parse_feed(feed, len(tickets))))
+        example = "/".join(["YNY"] * draws)
+        print("\n  Then record the results, one triple per draw"
+              f"{' (' + str(draws) + ' operators)' if draws > 1 else ''}:")
+        print(f"    python sokaligi_bot.py settle --results {example}")
 
 
 ADAPTERS = {"manual": PlacementAdapter}
@@ -192,6 +203,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         "max_stages": args.stages,
         "stop_loss": args.stop_loss if args.stop_loss > 0 else args.bankroll,
         "books": args.books,
+        "feed": args.feed,
         "cycle": 1,
         "stage": 0,
         "cycle_staked": 0.0,
@@ -205,17 +217,23 @@ def cmd_init(args: argparse.Namespace) -> int:
           f"{args.stages} stages max.")
 
     # Tell the truth about the ladder up front rather than at stage four.
-    worst = min(slip_odds(s, [M.MARKETS[k] for k in M.MARKETS]) for s in SLIPS.values()) / 3.0
-    m = M.min_multiplier(worst, args.stages, args.target)
-    rows = M.ladder(args.base, args.stages, math.ceil(m * 100) / 100, args.step)
+    worst = min(slip_odds(s, list(M.MARKETS.values())) for s in SLIPS.values()) / 3.0
+    rows = M.ladder(args.base, args.stages, args.step, worst, args.target * 3 * args.base)
     need = rows[-1]["cumulative"]
     funded = sum(1 for r in rows if r["cumulative"] <= args.bankroll)
+    q = M.round_summary("proportional", args.feed)["p_round_loss"]
     print(f"At screenshot odds the {args.stages}-stage ladder needs {need:,.0f} "
           f"to complete; this bankroll funds {funded}.")
     if funded < args.stages:
-        q = M.round_summary("proportional", "shared")["p_round_loss"]
         print(f"  -> the real plan is {funded} stages with a {q ** funded:.1%} bust "
               f"rate, not {args.stages} with {q ** args.stages:.1%}.")
+        print(f"  -> {need:,.0f} is the bankroll that buys the {args.stages}-stage "
+              "plan as written.")
+    if args.feed != "shared":
+        print(f"  Feed groups {args.feed}: slips sharing a group settle on one "
+              "match week.")
+        print("  Confirm the match-week number matches across operators before "
+              "trusting that split.")
     return 0
 
 
@@ -271,7 +289,7 @@ def cmd_next(args: argparse.Namespace) -> int:
           f"net {worst * per_round - committed:,.0f} if this stage closes the cycle")
     print(f"  bankroll after placing     {state['bankroll'] - per_round:,.0f}")
 
-    ADAPTERS[args.adapter]().place(tickets)
+    ADAPTERS[args.adapter]().place(tickets, state.get("feed", "shared"))
 
     state["pending"] = {
         "stage": stage,
@@ -287,14 +305,30 @@ def cmd_next(args: argparse.Namespace) -> int:
     return 0
 
 
-def parse_results(text: str) -> dict[str, tuple[bool, ...]]:
-    """`YNY` for a shared feed, or `A:YYY,B:YNY,C:YYN` for independent ones."""
+def parse_results(text: str, feed: str = "shared") -> dict[str, tuple[bool, ...]]:
+    """Three forms, cheapest first.
+
+    `YNY`              one draw settles every slip
+    `YYY/YNY`          one triple per feed group, in group order
+    `A:YYY,B:YYY,C:YNY`  explicit per slip, always available
+    """
     def triple(value: str) -> tuple[bool, ...]:
         value = value.strip().upper()
         if len(value) != 3 or set(value) - {"Y", "N"}:
             raise SystemExit(f"Bad result {value!r}; expected three Y/N, e.g. YNY")
         return tuple(c == "Y" for c in value)
 
+    if "/" in text:
+        # One triple per feed group, in group order: "YYY/YNY" means the
+        # SokaBet draw landed YYY and the Gwala draw landed YNY.
+        groups = M.parse_feed(feed or "shared", len(SLIPS))
+        drawn = [triple(part) for part in text.split("/")]
+        if len(drawn) != len(set(groups)):
+            raise SystemExit(
+                f"Feed {feed!r} has {len(set(groups))} draw(s); got {len(drawn)}"
+            )
+        order = sorted(set(groups))
+        return {key: drawn[order.index(g)] for key, g in zip(SLIPS, groups)}
     if ":" not in text:
         shared = triple(text)
         return {key: shared for key in SLIPS}
@@ -314,7 +348,7 @@ def cmd_settle(args: argparse.Namespace) -> int:
     if not pending:
         raise SystemExit("Nothing pending. Run `next` first.")
 
-    results = parse_results(args.results)
+    results = parse_results(args.results, state.get("feed", "shared"))
     odds = [tuple(pair) for pair in pending["odds"]]
     rows, returned = [], 0.0
     for ticket in pending["tickets"]:
@@ -404,7 +438,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     print(f"  staked {staked:,.0f}  returned {back:,.0f}  net {back - staked:+,.0f}")
     if staked:
         realised = back / staked - 1.0
-        model = M.round_summary("proportional", "shared")["edge"]
+        model = M.round_summary("proportional", state.get("feed", "shared"))["edge"]
         print(f"  realised {realised:+.2%} of turnover vs model {model:+.2%}")
         print(f"  ticket strike rate {wins / len(rows):.4f}")
         # A treble ladder swings +75% or -100% on a single round, so a short
@@ -437,14 +471,16 @@ def main() -> int:
 
     i = sub.add_parser("init", help="create the state file")
     i.add_argument("--bankroll", type=float, required=True)
-    i.add_argument("--base", type=float, default=300.0)
+    i.add_argument("--base", type=float, default=100.0)
     i.add_argument("--stages", type=int, default=6)
     i.add_argument("--step", type=float, default=100.0)
     i.add_argument("--target", type=float, default=0.0,
                    help="profit on close, in base round stakes")
     i.add_argument("--stop-loss", type=float, default=0.0,
                    help="max session drawdown; defaults to the whole bankroll")
-    i.add_argument("--books", nargs=3, default=["sokabet", "book2", "book3"])
+    i.add_argument("--books", nargs=3, default=DEFAULT_BOOKS)
+    i.add_argument("--feed", default=DEFAULT_FEED,
+                   help="which draw settles each slip; shared, independent, or 0,0,1")
 
     n = sub.add_parser("next", help="size and place the next stage")
     n.add_argument("--odds", nargs=3, required=True,
@@ -453,7 +489,7 @@ def main() -> int:
 
     s = sub.add_parser("settle", help="record the match week's results")
     s.add_argument("--results", required=True,
-                   help="YNY for a shared feed, or A:YYY,B:YNY,C:YYN")
+                   help="YNY, or YYY/YNY per feed group, or A:YYY,B:YYY,C:YNY")
 
     sub.add_parser("status", help="state plus realised-vs-model ledger")
     sub.add_parser("reset", help="abandon the current cycle")
