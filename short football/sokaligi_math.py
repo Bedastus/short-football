@@ -157,6 +157,25 @@ def slip_price(slip: tuple[bool, ...], probs: dict[str, tuple[float, float, floa
 # -------------------------------------------------- one round, exactly priced
 
 
+def set_markets(values: list[str]) -> None:
+    """Replace the screenshot prices with the ones quoted right now.
+
+    Kiron re-prices every match week, so every figure in this file is a function
+    of the round in front of you rather than of the three screenshots it was
+    written against. The slip structure is fixed; the prices are not.
+    """
+    if len(values) != len(MARKETS):
+        raise SystemExit(f"--odds needs {len(MARKETS)} yes,no pairs")
+    for name, value in zip(list(MARKETS), values):
+        try:
+            yes, no = (float(part) for part in value.split(","))
+        except ValueError:
+            raise SystemExit(f"Bad odds pair {value!r}; expected e.g. 1.69,2.17")
+        if yes <= 1.0 or no <= 1.0:
+            raise SystemExit(f"Odds must be above 1.0; got {value!r}")
+        MARKETS[name] = (yes, no)
+
+
 def parse_feed(spec: str, books: int = 3) -> list[int]:
     """Which draw settles each slip, as a group index per slip.
 
@@ -710,10 +729,17 @@ def cmd_fit(args: argparse.Namespace) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--devig", choices=sorted(DEVIGS), default="proportional")
     sub = parser.add_subparsers(dest="mode", required=True)
 
+    def base(p: argparse.ArgumentParser) -> argparse.ArgumentParser:
+        """Options every subcommand takes, so they work after the verb."""
+        p.add_argument("--devig", choices=sorted(DEVIGS), default="proportional")
+        p.add_argument("--odds", nargs=3, metavar="YES,NO",
+                       help="live BTTS prices, replacing the screenshot ones")
+        return p
+
     def common(p: argparse.ArgumentParser) -> None:
+        base(p)
         p.add_argument("--feed", default="shared",
                        help="shared, independent, or per-slip groups like 0,0,1")
         p.add_argument("--stages", type=int, default=6)
@@ -722,7 +748,7 @@ def main() -> int:
         p.add_argument("--target", type=float, default=0.0,
                        help="profit on close, in base round stakes")
 
-    sub.add_parser("price", help="de-vig the legs and price the three slips")
+    base(sub.add_parser("price", help="de-vig the legs and price the three slips"))
 
     ladder_p = sub.add_parser("ladder", help="solve and print the stake table")
     common(ladder_p)
@@ -739,14 +765,16 @@ def main() -> int:
     common(ruin_p)
     ruin_p.add_argument("--bankroll", type=float, default=9784.75)
 
-    sub.add_parser("breakeven", help="what the margin would have to be")
+    base(sub.add_parser("breakeven", help="what the margin would have to be"))
 
-    promo_p = sub.add_parser("promo", help="break-even rollover on a bonus")
+    promo_p = base(sub.add_parser("promo", help="break-even rollover on a bonus"))
     promo_p.add_argument("--bonus", type=float, default=0.0)
     promo_p.add_argument("--rollover", type=float, default=0.0, help="e.g. 5 for 5x")
     promo_p.add_argument("--leg-type", choices=("single", "treble"), default="single")
 
     args = parser.parse_args()
+    if args.odds:
+        set_markets(args.odds)
     return {
         "price": cmd_price,
         "ladder": cmd_ladder,

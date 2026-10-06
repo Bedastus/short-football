@@ -245,8 +245,7 @@ being run under anyway, and `sokaligi_bot.py` enforces them:
 python sokaligi_bot.py init --bankroll 21000 --base 200 --stages 5 --step 100 \
     --books soka-1 soka-2 soka-3 --feed shared --stop-loss 19800
 
-python sokaligi_bot.py next   --odds 1.69,2.17 1.84,1.97 1.69,2.17
-python sokaligi_bot.py settle --results YNY      # one draw settles all three
+python sokaligi_bot.py run                       # odds in, stakes out, results in
 python sokaligi_bot.py status
 ```
 
@@ -258,6 +257,9 @@ python sokaligi_bot.py status
 - **`--stop-loss`** caps session drawdown and is checked *before* each stake, not after.
 - The bot refuses to place a stage the bankroll cannot settle, which is the failure mode of
   running this by hand.
+- **Odds are asked every round, never hardcoded.** Kiron re-prices each match week, and a
+  stage sized off a stale price does not recover; `run` solves each stake from the prices
+  typed for that round.
 - Every round is logged to `data/sokaligi_ledger.csv`. After 150 tickets `status` compares the
   realised rate against the model's −14.12%. **That ledger is the EV check** — if the two
   disagree by more than 5 points, the ledger wins and the model gets re-examined.

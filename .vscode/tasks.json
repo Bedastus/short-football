@@ -14,8 +14,16 @@
       "label": "1. Open 3 account browsers",
       "type": "shell",
       "command": "python3",
-      "windows": { "command": "python" },
-      "args": ["open_books.py", "--accounts", "3", "--screen", "${input:screen}"],
+      "windows": {
+        "command": "python"
+      },
+      "args": [
+        "open_books.py",
+        "--accounts",
+        "3",
+        "--screen",
+        "${input:screen}"
+      ],
       "problemMatcher": [],
       "detail": "Three isolated browser profiles, tiled left to right in account order."
     },
@@ -23,47 +31,64 @@
       "label": "2. Init ladder (base 200, 5 stages)",
       "type": "shell",
       "command": "python3",
-      "windows": { "command": "python" },
+      "windows": {
+        "command": "python"
+      },
       "args": [
-        "sokaligi_bot.py", "init",
-        "--bankroll", "${input:bankroll}",
-        "--base", "${input:base}",
-        "--stages", "5",
-        "--step", "100",
-        "--feed", "shared",
-        "--books", "soka-1", "soka-2", "soka-3",
-        "--stop-loss", "${input:stopLoss}"
+        "sokaligi_bot.py",
+        "init",
+        "--bankroll",
+        "${input:bankroll}",
+        "--base",
+        "${input:base}",
+        "--stages",
+        "5",
+        "--step",
+        "100",
+        "--feed",
+        "shared",
+        "--books",
+        "soka-1",
+        "soka-2",
+        "soka-3",
+        "--stop-loss",
+        "${input:stopLoss}"
       ],
       "problemMatcher": [],
       "detail": "Creates data/sokaligi_state.json. Wipes any cycle in progress."
     },
     {
-      "label": "3. Next stage  (enter live odds)",
+      "label": "3. RUN interactive loop",
       "type": "shell",
       "command": "python3",
-      "windows": { "command": "python" },
+      "windows": {
+        "command": "python"
+      },
       "args": [
-        "sokaligi_bot.py", "next",
-        "--odds", "${input:oddsLeeds}", "${input:oddsSpurs}", "${input:oddsForest}"
+        "sokaligi_bot.py",
+        "run"
       ],
       "problemMatcher": [],
-      "detail": "Sizes the round from the odds you type and prints what to place."
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": false,
+        "focus": true
+      },
+      "detail": "Asks for this round's odds, prints the stakes, asks for results, repeats."
     },
     {
-      "label": "4. Settle round  (enter Y/N results)",
+      "label": "4. Status + ledger",
       "type": "shell",
       "command": "python3",
-      "windows": { "command": "python" },
-      "args": ["sokaligi_bot.py", "settle", "--results", "${input:results}"],
-      "problemMatcher": [],
-      "detail": "One triple, e.g. YNY. Advances or resets the ladder."
-    },
-    {
-      "label": "5. Status + ledger",
-      "type": "shell",
-      "command": "python3",
-      "windows": { "command": "python" },
-      "args": ["sokaligi_bot.py", "status"],
+      "windows": {
+        "command": "python"
+      },
+      "args": [
+        "sokaligi_bot.py",
+        "status"
+      ],
       "problemMatcher": [],
       "detail": "Bankroll, stage, and realised rate vs model once 150 tickets are in."
     },
@@ -71,11 +96,24 @@
       "label": "Fit stake to budget",
       "type": "shell",
       "command": "python3",
-      "windows": { "command": "python" },
+      "windows": {
+        "command": "python"
+      },
       "args": [
-        "sokaligi_math.py", "fit",
-        "--feed", "shared", "--stages", "5",
-        "--budget", "${input:budget}", "--step", "100"
+        "sokaligi_math.py",
+        "fit",
+        "--feed",
+        "shared",
+        "--stages",
+        "5",
+        "--budget",
+        "${input:budget}",
+        "--step",
+        "100",
+        "--odds",
+        "${input:oddsLeeds}",
+        "${input:oddsSpurs}",
+        "${input:oddsForest}"
       ],
       "problemMatcher": [],
       "detail": "Largest base stake whose whole 5-stage ladder fits the budget."
@@ -84,28 +122,89 @@
       "label": "Price the round",
       "type": "shell",
       "command": "python3",
-      "windows": { "command": "python" },
-      "args": ["sokaligi_math.py", "price"],
+      "windows": {
+        "command": "python"
+      },
+      "args": [
+        "sokaligi_math.py",
+        "price",
+        "--odds",
+        "${input:oddsLeeds}",
+        "${input:oddsSpurs}",
+        "${input:oddsForest}"
+      ],
       "problemMatcher": []
     },
     {
       "label": "Survival / ruin table",
       "type": "shell",
       "command": "python3",
-      "windows": { "command": "python" },
+      "windows": {
+        "command": "python"
+      },
       "args": [
-        "sokaligi_math.py", "ruin",
-        "--feed", "shared", "--stages", "5",
-        "--base", "${input:base}", "--bankroll", "${input:bankroll}"
+        "sokaligi_math.py",
+        "ruin",
+        "--feed",
+        "shared",
+        "--stages",
+        "5",
+        "--base",
+        "${input:base}",
+        "--bankroll",
+        "${input:bankroll}",
+        "--odds",
+        "${input:oddsLeeds}",
+        "${input:oddsSpurs}",
+        "${input:oddsForest}"
       ],
       "problemMatcher": []
+    },
+    {
+      "label": "One-shot: size next stage",
+      "type": "shell",
+      "command": "python3",
+      "windows": {
+        "command": "python"
+      },
+      "args": [
+        "sokaligi_bot.py",
+        "next",
+        "--odds",
+        "${input:oddsLeeds}",
+        "${input:oddsSpurs}",
+        "${input:oddsForest}"
+      ],
+      "problemMatcher": [],
+      "detail": "Sizes the round from the odds you type and prints what to place."
+    },
+    {
+      "label": "One-shot: settle round",
+      "type": "shell",
+      "command": "python3",
+      "windows": {
+        "command": "python"
+      },
+      "args": [
+        "sokaligi_bot.py",
+        "settle",
+        "--results",
+        "${input:results}"
+      ],
+      "problemMatcher": [],
+      "detail": "One triple, e.g. YNY. Advances or resets the ladder."
     },
     {
       "label": "Abandon cycle (reset ladder)",
       "type": "shell",
       "command": "python3",
-      "windows": { "command": "python" },
-      "args": ["sokaligi_bot.py", "reset"],
+      "windows": {
+        "command": "python"
+      },
+      "args": [
+        "sokaligi_bot.py",
+        "reset"
+      ],
       "problemMatcher": [],
       "detail": "Drops the carried deficit and starts a fresh cycle at stage 1."
     }
@@ -163,7 +262,12 @@
       "id": "screen",
       "type": "pickString",
       "description": "Screen size, for tiling the account windows",
-      "options": ["1920x1080", "1600x900", "1366x768", "2560x1440"],
+      "options": [
+        "1920x1080",
+        "1600x900",
+        "1366x768",
+        "2560x1440"
+      ],
       "default": "1920x1080"
     }
   ]

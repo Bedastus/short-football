@@ -21,40 +21,79 @@ any time the budget changes:
 python3 sokaligi_math.py fit --feed shared --stages 5 --budget 20000 --step 100
 ```
 
+Every `sokaligi_math.py` subcommand also takes `--odds`, to price the round in front of you
+rather than the screenshot it was written against:
+
+```bash
+python3 sokaligi_math.py price --odds 1.75,2.05 1.90,1.92 1.62,2.30
+python3 sokaligi_math.py fit   --odds 1.75,2.05 1.90,1.92 1.62,2.30 --stages 5 --budget 20000
+```
+
+## Windows / PowerShell
+
+Use `python`, not `python3`. **PowerShell does not accept `\` as a line continuation** — that
+is a bash thing, and it produces `Missing expression after unary operator '--'`. Either keep
+the command on one line, or end each line with a backtick `` ` ``.
+
+```powershell
+cd "C:\Users\Anonymous\Desktop\Projects\kiron Allan"
+python sokaligi_bot.py init --bankroll 21000 --base 200 --stages 5 --step 100 --books soka-1 soka-2 soka-3 --feed shared --stop-loss 19800
+python sokaligi_bot.py run
+```
+
+`init` runs once per session. After that `run` is the only command you need.
+
 ## VS Code
 
-Tasks live in `.vscode/tasks.json`. **Terminal → Run Task**, or bind `workbench.action.tasks.runTask`
-to a key. They run in numbered order:
+Tasks live in `.vscode/tasks.json`. **Terminal → Run Task**, numbered in running order:
 
 | task | what it does |
 |---|---|
 | 1. Open 3 account browsers | three isolated profiles, tiled left to right |
 | 2. Init ladder | creates `data/sokaligi_state.json` — wipes any cycle in progress |
-| 3. Next stage | prompts for the three live odds pairs, prints what to place |
-| 4. Settle round | prompts for the Y/N results, advances or resets the ladder |
-| 5. Status + ledger | bankroll, stage, realised rate vs model |
+| **3. RUN interactive loop** | **the per-round loop; the only one you need while playing** |
+| 4. Status + ledger | bankroll, stage, realised rate vs model |
 
-Plus `Fit stake to budget`, `Price the round`, `Survival / ruin table`, and
-`Abandon cycle` off-cycle. `.vscode/launch.json` has debugger entry points for the same
-scripts. Install the recommended extensions when VS Code offers them (`ms-python.python`,
-`ms-python.debugpy`); no virtualenv is needed, everything is standard library.
+Off-cycle: `Fit stake to budget`, `Price the round`, `Survival / ruin table`, `Abandon cycle`,
+and one-shot `size next stage` / `settle round` for a single round by hand.
+`.vscode/launch.json` has debugger entry points. Install the recommended extensions when
+offered; no virtualenv is needed, everything is standard library.
 
-## Per-round loop
+## The loop
 
-Match weeks start every two minutes, so this has to be quick.
-
-```bash
-python3 open_books.py --accounts 3           # once per session
-python3 sokaligi_bot.py next --odds 1.69,2.17 1.84,1.97 1.69,2.17
-#   place the three tickets at the stakes it prints
-python3 sokaligi_bot.py settle --results YNY  # results in match order
+```
+python sokaligi_bot.py run
 ```
 
-**Odds go in fresh every round.** Kiron re-prices each match week, and stage 4 sized off stage
-1's prices does not recover. `next` solves the stake from the odds you give it.
+Each round it asks for the three BTTS prices, sizes the stakes from them, prints what to
+place, then asks for the results:
 
-**Results are one triple in match order** — Leeds, Spurs, N.Forest — `Y` where both teams
-scored. One triple because one draw settles all three accounts.
+```
+cycle 1  stage 2/5  bankroll 20,400  deficit 600
+  odds for this match week  (Enter reuses, 's' skip, 'q' quit, '?' help)
+    match 1 yes,no [1.69,2.17]:
+    match 2 yes,no [1.84,1.97]: 1.90,1.92
+    match 3 yes,no [1.69,2.17]:
+=== cycle 1, stage 2 ===
+  stake per slip    300   round total 900
+    soka-1  slip A  Y Y Y  @ 5.414  stake 300
+    soka-2  slip B  N Y Y  @ 6.953  stake 300
+    soka-3  slip C  Y Y N  @ 6.953  stake 300
+
+  results for this match week (e.g. YNY, or 'q'): YNY
+```
+
+- **Nothing is hardcoded.** Stakes are solved from the prices you type, every round. A price
+  that moves mid-session is handled; a stage sized off a stale price is not.
+- **Enter alone reuses** the value in brackets, so only changed prices need typing — which is
+  what makes a two-minute match week workable.
+- `s` sits the round out, `q` stops. State saves after every round, so `run` again picks up
+  mid-ladder exactly where it left off.
+- If a gate blocks the round (unfunded, past the stop-loss, ladder exhausted) it says which
+  and offers to reset, rather than dying with a deficit still carried.
+
+Results are one triple in match order — Leeds, Spurs, N.Forest — `Y` where both teams scored.
+One triple because one SokaBet draw settles all three accounts.
 
 ## The three slips
 
