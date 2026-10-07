@@ -1,0 +1,4 @@
+short football/data/
+short football/profiles/
+__pycache__/
+*.pyc

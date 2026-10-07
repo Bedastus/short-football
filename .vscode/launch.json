@@ -1,0 +1,49 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Bot: next stage",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/short football/sokaligi_bot.py",
+      "cwd": "${workspaceFolder}/short football",
+      "console": "integratedTerminal",
+      "args": ["next", "--odds", "1.69,2.17", "1.84,1.97", "1.69,2.17"]
+    },
+    {
+      "name": "Bot: settle",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/short football/sokaligi_bot.py",
+      "cwd": "${workspaceFolder}/short football",
+      "console": "integratedTerminal",
+      "args": ["settle", "--results", "${input:results}"]
+    },
+    {
+      "name": "Math: fit 5 stages to 20k",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/short football/sokaligi_math.py",
+      "cwd": "${workspaceFolder}/short football",
+      "console": "integratedTerminal",
+      "args": ["fit", "--feed", "shared", "--stages", "5", "--budget", "20000"]
+    },
+    {
+      "name": "Browsers: open 3 accounts",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/short football/open_books.py",
+      "cwd": "${workspaceFolder}/short football",
+      "console": "integratedTerminal",
+      "args": ["--accounts", "3"]
+    }
+  ],
+  "inputs": [
+    {
+      "id": "results",
+      "type": "promptString",
+      "description": "BTTS results, e.g. YNY",
+      "default": "YNY"
+    }
+  ]
+}
